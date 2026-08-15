@@ -1,0 +1,57 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract project ZIP
+        run: |
+          unzip -q project_services_gaz_ilam_github_android_only.zip -d extracted
+          if [ -f extracted/pubspec.yaml ]; then
+            echo "PROJECT_DIR=extracted" >> $GITHUB_ENV
+          elif [ -f extracted/khadamat_extract/pubspec.yaml ]; then
+            echo "PROJECT_DIR=extracted/khadamat_extract" >> $GITHUB_ENV
+          else
+            echo "pubspec.yaml not found"
+            find extracted -maxdepth 3 -type f | head -50
+            exit 1
+          fi
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.0'
+          channel: stable
+          cache: true
+
+      - name: Create .env
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' '${{ secrets.SUPABASE_URL }}' '${{ secrets.SUPABASE_ANON_KEY }}' > .env
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
